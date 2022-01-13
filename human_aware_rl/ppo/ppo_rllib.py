@@ -23,7 +23,7 @@ class RllibPPOModel(TFModelV2):
         size_hidden_layers = custom_params["SIZE_HIDDEN_LAYERS"]
         num_filters = custom_params["NUM_FILTERS"]
         num_convs = custom_params["NUM_CONV_LAYERS"]
-        d2rl = custom_params["D2RL"]
+        d2rl = "D2RL" in custom_params and custom_params["D2RL"]
         assert type(d2rl) == bool
 
         ## Create graph of custom network. It will under a shared tf scope such that all agents

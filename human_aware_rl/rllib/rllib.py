@@ -505,6 +505,8 @@ def evaluate(eval_params, mdp_params, outer_shape, agent_0_policy, agent_1_polic
 
 def gen_trainer_from_params(params):
     # All ray environment set-up
+    if 'verbose' not in params:
+        params['verbose'] = False
     if not ray.is_initialized():
         init_params = {
             "ignore_reinit_error" : True,
