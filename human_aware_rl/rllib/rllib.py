@@ -174,14 +174,14 @@ class OvercookedMultiAgent(MultiAgentEnv):
         obs_shape = featurize_fn_ppo(dummy_state)[0].shape
         high = np.ones(obs_shape) * float("inf")
         low = np.ones(obs_shape) * 0
-        self.ppo_observation_space = gym.spaces.Box(np.float32(low), np.float32(high), dtype=np.float32)
+        self.ppo_observation_space = gym.spaces.Box(np.float64(low), np.float64(high), dtype=np.float64)
 
         # bc observation
         featurize_fn_bc = lambda state: self.base_env.featurize_state_mdp(state)
         obs_shape = featurize_fn_bc(dummy_state)[0].shape
         high = np.ones(obs_shape) * 100
         low = np.ones(obs_shape) * -100
-        self.bc_observation_space = gym.spaces.Box(np.float32(low), np.float32(high), dtype=np.float32)
+        self.bc_observation_space = gym.spaces.Box(np.float64(low), np.float64(high), dtype=np.float64)
 
     def _get_featurize_fn(self, agent_id):
         if agent_id.startswith('ppo'):
