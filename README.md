@@ -21,12 +21,12 @@ For more information about the Overcooked-AI environment, check out [this](https
 
 When cloning the repository, make sure you also clone the submodules (this implementation is linked to specific commits of the submodules, and will mostly not work with more recent ones):
 ```
-$ git clone --recursive https://github.com/HumanCompatibleAI/human_aware_rl.git
+$ git clone --recursive https://github.com/jyp0802/human_aware_rl.git
 ```
 
 If you want to clone a specific branch with its submodules, use:
 ```
-$ git clone --single-branch --branch BRANCH_NAME --recursive https://github.com/HumanCompatibleAI/human_aware_rl.git
+$ git clone --single-branch --branch BRANCH_NAME --recursive https://github.com/jyp0802/human_aware_rl.git
 ```
 
 
