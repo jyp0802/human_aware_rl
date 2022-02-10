@@ -101,7 +101,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
         # To be passed into OvercookedGridWorld constructor
         "mdp_params" : {
             "layout_name" : "cramped_room",
-            "rew_shaping_params" : {}
+            "shaped_reward_params" : {}
         },
         # To be passed into OvercookedEnv constructor
         "env_params" : {
@@ -323,7 +323,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
         assert env_config and "env_params" in env_config and "multi_agent_params" in env_config
         assert "mdp_params" in env_config or "mdp_params_schedule_fn" in env_config, \
             "either a fixed set of mdp params or a schedule function needs to be given"
-        # "layout_name" and "rew_shaping_params"
+        # "layout_name" and "shaped_reward_params"
         if "mdp_params" in env_config:
             mdp_params = env_config["mdp_params"]
             outer_shape = None

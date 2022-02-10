@@ -3,7 +3,7 @@ import numpy as np
 
 from overcooked_ai_py.agents.benchmarking import AgentEvaluator
 from overcooked_ai_py.mdp.actions import Action, Direction
-from overcooked_ai_py.mdp.overcooked_mdp import OvercookedState, ObjectState, PlayerState, OvercookedGridworld
+from overcooked_ai_py.mdp.overcooked_mdp import OvercookedState
 
 AI_ID = 'I am robot, bite my shiny metal ass!'
 

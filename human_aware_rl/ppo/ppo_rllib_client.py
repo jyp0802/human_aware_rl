@@ -60,7 +60,7 @@ def my_config():
     ### Model params ###
 
     # Whether dense reward should come from potential function or not
-    use_phi = True
+    use_phi = False
 
     # whether to use recurrence in ppo model
     use_lstm = False
@@ -87,7 +87,7 @@ def my_config():
     seed = None
 
     # Number of gpus the central driver should use
-    num_gpus = 0 if LOCAL_TESTING else 1
+    num_gpus = 1 if not LOCAL_TESTING else 1
 
     # How many environment timesteps will be simulated (across all environments)
     # for one set of gradient updates. Is divided equally across environments
@@ -199,13 +199,15 @@ def my_config():
     experiment_name = "{0}_{1}_{2}".format("PPO", layout_name, params_str)
 
     # Rewards the agent will receive for intermediate actions
-    rew_shaping_params = {
-        "PLACEMENT_IN_POT_REW": 3,
-        "DISH_PICKUP_REWARD": 3,
-        "SOUP_PICKUP_REWARD": 5,
-        "DISH_DISP_DISTANCE_REW": 0,
-        "POT_DISTANCE_REW": 0,
-        "SOUP_DISTANCE_REW": 0,
+    shaped_reward_params = {
+        "add_ingredient_to_container": 3,
+        "move_food_from_container": 5,
+        "throw_away_food": 2,
+        "throw_away_container": 3,
+        "place_object": 2,
+        "pickup_dispenser": 1,
+        "pickup_object": 2,
+        "start_cooking": 6
     }
 
     # Max episode length
@@ -272,7 +274,7 @@ def my_config():
 
         "mdp_params" : {
             "layout_name": layout_name,
-            "rew_shaping_params": rew_shaping_params
+            "shaped_reward_params": shaped_reward_params
         },
         # To be passed into OvercookedEnv constructor
         "env_params" : {
@@ -331,7 +333,7 @@ def run(params):
     # Training loop
     for i in range(params['num_training_iters']):
         if params['verbose']:
-            print("Starting training iteration", i)
+            print(f"Starting training iteration {i}/{params['num_training_iters']}")
         result = trainer.train()
 
         if i % params['save_every'] == 0:

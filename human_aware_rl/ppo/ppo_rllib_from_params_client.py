@@ -60,23 +60,23 @@ def naive_params_schedule_fn(outside_information):
     In this preliminary version, the outside information is ignored
     """
     # Rewards the agent will receive for intermediate actions
-    rew_shaping_params = {
-        "PLACEMENT_IN_POT_REW": 3,
-        "DISH_PICKUP_REWARD": 3,
-        "SOUP_PICKUP_REWARD": 5,
-        "DISH_DISP_DISTANCE_REW": 0,
-        "POT_DISTANCE_REW": 0,
-        "SOUP_DISTANCE_REW": 0,
+    shaped_reward_params = {
+        "add_ingredient_to_container": 3,
+        "move_food_from_container": 5,
+        "throw_away_food": 2,
+        "throw_away_container": 3,
+        "place_object": 2,
+        "pickup_dispenser": 1,
+        "pickup_object": 2,
+        "start_cooking": 6
     }
     mdp_default_gen_params = {
         "inner_shape": (5, 4),
         "prop_empty": 0.95,
         "prop_feats": 0.1,
-        "start_all_orders": [
-            {"ingredients": ["onion", "onion", "onion"]}
-        ],
+        "start_all_orders": ["onionsoup"],
         "display": False,
-        "rew_shaping_params": rew_shaping_params
+        "shaped_reward_params": shaped_reward_params
     }
     return mdp_default_gen_params
 
@@ -318,9 +318,7 @@ def my_config():
             "inner_shape": (5, 4),
             "prop_empty": 0.95,
             "prop_feats": 0.1,
-            "start_all_orders": [
-                {"ingredients": ["onion", "onion", "onion"]}
-            ],
+            "start_all_orders": ["onionsoup"],
             "display": False
         },
 
