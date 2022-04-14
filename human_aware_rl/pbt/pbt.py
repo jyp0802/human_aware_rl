@@ -32,8 +32,7 @@ from ray.tune.registry import register_env
 from ray.rllib.models import ModelCatalog
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from human_aware_rl.ppo.ppo_rllib import RllibPPOModel, RllibLSTMPPOModel
-from human_aware_rl.rllib.rllib import OvercookedMultiAgent, save_trainer, gen_trainer_from_params
-from human_aware_rl.imitation.behavior_cloning_tf2 import BehaviorCloningPolicy, BC_SAVE_DIR
+from human_aware_rl.rllib.pbt_rllib import OvercookedPopulationMultiAgent, save_trainer, gen_population_trainer_from_params
 
 
 ###################### Temp Documentation #######################
@@ -52,8 +51,8 @@ from human_aware_rl.imitation.behavior_cloning_tf2 import BehaviorCloningPolicy,
 # Dummy wrapper to pass rllib type checks
 def _env_creator(env_config):
     # Re-import required here to work with serialization
-    from human_aware_rl.rllib.rllib import OvercookedMultiAgent 
-    return OvercookedMultiAgent.from_config(env_config)
+    from human_aware_rl.rllib.pbt_rllib import OvercookedPopulationMultiAgent 
+    return OvercookedPopulationMultiAgent.from_config(env_config)
 
 @ex.config
 def my_config():
@@ -83,7 +82,7 @@ def my_config():
     # Training Params #
     ###################
 
-    num_workers = 8 if not LOCAL_TESTING else 2
+    num_workers = 2 if not LOCAL_TESTING else 2
 
     # list of all random seeds to use for experiments, used to reproduce results
     seeds = [0]
@@ -175,15 +174,29 @@ def my_config():
     # Whether to log training progress and debugging info
     verbose = True
 
-    #############
-    # BC Params #
-    #############
+    #####################
+    # Population Params #
+    #####################
 
-    # path to pickled policy model for behavior cloning
-    bc_model_dir = os.path.join(BC_SAVE_DIR, "default")
+    TOTAL_STEPS_PER_AGENT = 1.5e7 if not LOCAL_TESTING else 1e4
 
-    # Whether bc agents should return action logit argmax or sample
-    bc_stochastic = True
+    population_size = 3
+    K = 0.1     
+    T_select = 0.77
+    binomial_n = 1
+    inherit_prob = 0.5
+    perturb_prob = 0.1
+    perturb_val = [0.8, 1.2]
+    hp_range = {"lr": [1e-7, 1e-3], "gamma": [0.9, 0.999]}
+
+    # How many pairings and model training updates before the worst model is overwritten
+    ITER_PER_SELECTION = population_size**2
+
+    resample_prob = 0.33
+    mutation_factor = [0.75, 1.25]
+    hyperparams_to_mutate = ["lmbda", "clip_param", "lr", "num_sgd_iter"]
+
+    NUM_SELECTION_GAMES = 10 if not LOCAL_TESTING else 2
 
     ######################
     # Environment Params #
@@ -227,13 +240,6 @@ def my_config():
     # Linearly anneal the reward shaping factor such that it reaches zero after this number of timesteps
     reward_shaping_horizon = float('inf')
 
-    # bc_factor represents that ppo agent gets paired with a bc agent for any episode
-    # schedule for bc_factor is represented by a list of points (t_i, v_i) where v_i represents the 
-    # value of bc_factor at timestep t_i. Values are linearly interpolated between points
-    # The default listed below represents bc_factor=0 for all timesteps
-    bc_schedule = OvercookedMultiAgent.self_play_bc_schedule
-
-
     # To be passed into rl-lib model/custom_options config
     model_params = {
         "use_lstm" : use_lstm,
@@ -245,7 +251,7 @@ def my_config():
         "D2RL": D2RL
     }
 
-    # To be passed into the rllib.PPOTrainer class
+    # to be passed into the rllib.PPOTrainer class
     training_params = {
         "num_workers" : num_workers,
         "train_batch_size" : train_batch_size,
@@ -288,22 +294,23 @@ def my_config():
             "horizon" : horizon
         },
 
-        # To be passed into OvercookedMultiAgent constructor
+        # To be passed into OvercookedPopulationMultiAgent constructor
         "multi_agent_params" : {
             "reward_shaping_factor" : reward_shaping_factor,
             "reward_shaping_horizon" : reward_shaping_horizon,
-            "use_phi" : use_phi,
-            "bc_schedule" : bc_schedule
+            "use_phi" : use_phi
         }
     }
 
-    bc_params = {
-        "bc_policy_cls" : BehaviorCloningPolicy,
-        "bc_config" : {
-            "model_dir" : bc_model_dir,
-            "stochastic" : bc_stochastic,
-            "eager" : eager
-        }
+    population_params = {
+        "population_size" : population_size,
+        "K" : K,
+        "T_select" : T_select,
+        "binomial_n" : binomial_n,
+        "inherit_prob" : inherit_prob,
+        "perturb_prob" : perturb_prob,
+        "perturb_val" : perturb_val,
+        "hp_range" : hp_range
     }
 
     ray_params = {
@@ -317,7 +324,8 @@ def my_config():
         "model_params" : model_params,
         "training_params" : training_params,
         "environment_params" : environment_params,
-        "bc_params" : bc_params,
+        "population_params" : population_params,
+        "bc_params" : {},
         "shared_policy" : shared_policy,
         "num_training_iters" : num_training_iters,
         "evaluation_params" : evaluation_params,
@@ -332,17 +340,16 @@ def my_config():
 
 def run(params):
     # Retrieve the tune.Trainable object that is used for the experiment
-    trainer = gen_trainer_from_params(params)
+    trainer = gen_population_trainer_from_params(params)
 
     # Object to store training results in
     result = {}
 
-    # Training loop
     for i in range(params['num_training_iters']):
         if params['verbose']:
             print(f"Starting training iteration {i}/{params['num_training_iters']}")
         result = trainer.train()
-
+        
         if i % params['save_every'] == 0:
             save_path = save_trainer(trainer, params)
             if params['verbose']:
