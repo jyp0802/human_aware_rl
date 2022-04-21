@@ -111,13 +111,13 @@ def my_config():
     num_training_iters = 420 if not LOCAL_TESTING else 2
 
     # Stepsize of SGD.
-    lr = 1e-3 # o: 5e-5
+    lr = 5e-3
 
     # Learning rate schedule.
     lr_schedule = None
 
     # If specified, clip the global norm of gradients by this amount
-    grad_clip = 0.05 # o: 0.1
+    grad_clip = 0.05
 
     # Discount factor
     gamma = 0.99
@@ -178,25 +178,16 @@ def my_config():
     # Population Params #
     #####################
 
-    TOTAL_STEPS_PER_AGENT = 1.5e7 if not LOCAL_TESTING else 1e4
-
     population_size = 3
-    K = 0.1     
-    T_select = 0.77
-    binomial_n = 1
-    inherit_prob = 0.5
-    perturb_prob = 0.1
-    perturb_val = [0.8, 1.2]
-    hp_range = {"lr": [1e-7, 1e-3], "gamma": [0.9, 0.999]}
-
-    # How many pairings and model training updates before the worst model is overwritten
-    ITER_PER_SELECTION = population_size**2
-
     resample_prob = 0.33
     mutation_factor = [0.75, 1.25]
-    hyperparams_to_mutate = ["lmbda", "clip_param", "lr", "num_sgd_iter"]
-
-    NUM_SELECTION_GAMES = 10 if not LOCAL_TESTING else 2
+    hp_to_mutate = ["lr", "lambda", "clip_param", "gamma"]
+    hp_range = {
+        "lr": [1e-4, 1e-2],
+        "lambda": [0.9, 0.999],
+        "clip_param" : [0.01, 0.1],
+        "gamma": [0.9, 0.999]
+    }
 
     ######################
     # Environment Params #
@@ -304,13 +295,10 @@ def my_config():
 
     population_params = {
         "population_size" : population_size,
-        "K" : K,
-        "T_select" : T_select,
-        "binomial_n" : binomial_n,
-        "inherit_prob" : inherit_prob,
-        "perturb_prob" : perturb_prob,
-        "perturb_val" : perturb_val,
-        "hp_range" : hp_range
+        "resample_prob" : resample_prob,
+        "mutation_factor" : mutation_factor,
+        "hp_to_mutate" : hp_to_mutate,
+        "hp_range" : hp_range,
     }
 
     ray_params = {
