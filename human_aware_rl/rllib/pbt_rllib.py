@@ -17,7 +17,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.schedules import ConstantSchedule
 from human_aware_rl.rllib.utils import softmax, get_base_ae, get_required_arguments, iterable_equal
-from human_aware_rl.rllib.pbtlib import PopulationActor, PopulationMARL
+from human_aware_rl.rllib.pbtlib import CombinationPopulationActor, NextPopulationActor, PopulationMARL
 from datetime import datetime
 import tempfile
 import gym
@@ -293,11 +293,13 @@ def get_population_rllib_eval_function(eval_params, eval_mdp_params, env_params,
             print("Computing rollout of current trained policy")
 
         # Randomize starting indices
-        policies = evaluation_workers.foreach_trainable_policy(lambda x, y: y)
-        np.random.shuffle(policies)
+        policies = evaluation_workers.foreach_policy(lambda x, y: y)
         
+        pop_actor = ray.util.get_actor("pop_act")
+        eval_pairs = ray.get(pop_actor.get_eval_pairs.remote(policies))
+
         ep_returns = []
-        for (agent_0_policy, agent_1_policy) in itertools.combinations(policies, 2):
+        for (agent_0_policy, agent_1_policy) in eval_pairs:
             print(f"Evaluating with agents {agent_0_policy} and {agent_1_policy}")
 
             # Get the corresponding rllib policy objects for each policy string name
@@ -418,18 +420,6 @@ def gen_population_trainer_from_params(params):
                 size=None)
         return (None, env.ppo_observation_space, env.action_space, config)
 
-    # Create rllib compatible multi-agent config based on params
-    _multiagent = {}
-    policies = {f"ppo_{i}" : gen_policy() for i in range(population_params["population_size"])}
-
-    def policy_mapping_fn(agent_id):
-        _, _, i = agent_id.split("_")
-        return f"ppo_{i}"
-
-    _multiagent["policies"] = policies
-    _multiagent["policy_mapping_fn"] = policy_mapping_fn
-    _multiagent["policies_to_train"] = list(policies.keys())
-
     if "outer_shape" not in environment_params:
         environment_params["outer_shape"] = None
 
@@ -440,8 +430,36 @@ def gen_population_trainer_from_params(params):
         evaluation_params, environment_params['eval_mdp_params'], environment_params['env_params'],
         environment_params["outer_shape"], verbose=params['verbose'])
 
-    population_actor = PopulationActor.options(name="pop_act").remote(
-        population_params["population_size"])
+    # Create rllib compatible multi-agent config based on params
+    _multiagent = {}
+    if population_params["train_type"] == "combination":
+        def policy_mapping_fn(agent_id):
+            _, _, i = agent_id.split("_")
+            return f"ppo_{i}"
+
+        _multiagent["policies"] = {f"ppo_{i}" : gen_policy() for i in range(population_params["population_size"])}
+        _multiagent["policy_mapping_fn"] = policy_mapping_fn
+        _multiagent["policies_to_train"] = [f"ppo_{i}" for i in range(population_params["population_size"])]
+
+        population_actor = CombinationPopulationActor.options(name="pop_act").remote(
+            population_params["population_size"])
+
+    elif population_params["train_type"] == "next":
+        policies = {f"ppo_{i}" : gen_policy() for i in range(population_params["population_size"])}
+        policies["random"] = gen_policy()
+
+        def policy_mapping_fn(agent_id):
+            _, _, i = agent_id.split("_")
+            if int(i) < population_params["population_size"]:
+                return f"ppo_{i}"
+            return "random"
+
+        _multiagent["policies"] = policies
+        _multiagent["policy_mapping_fn"] = policy_mapping_fn
+        _multiagent["policies_to_train"] = [f"ppo_{i}" for i in range(population_params["population_size"])]
+
+        population_actor = NextPopulationActor.options(name="pop_act").remote(
+            population_params["population_size"])
 
     population_marl = PopulationMARL(
         population_params["population_size"], population_params["resample_prob"], population_params["mutation_factor"],
@@ -493,9 +511,14 @@ def gen_population_trainer_from_params(params):
             pop_actor = ray.util.get_actor("pop_act")
             all_scores = ray.get(pop_actor.get_scores.remote())
 
-            mean_scores = np.mean(all_scores, axis=1)
-            worst_agt_idx = np.argmin(mean_scores)
-            best_agt_idx = np.argmax(mean_scores)
+            if population_params["train_type"] == "combination":
+                mean_scores = np.mean(all_scores, axis=1)
+                worst_agt_idx = np.argmin(mean_scores)
+                best_agt_idx = np.argmax(mean_scores)
+            elif population_params["train_type"] == "next":
+                mean_scores = all_scores
+                worst_agt_idx = np.argmin(all_scores)
+                best_agt_idx = np.argmax(all_scores)
 
             for agt_idx in range(population_params["population_size"]):
                 result[f"agt_{agt_idx}_score"] = mean_scores[agt_idx]
@@ -504,7 +527,6 @@ def gen_population_trainer_from_params(params):
             for hp in population_params["hp_to_mutate"]:
                 result[f"agt_{worst_agt_idx}_{hp}"] = new_hp[hp]
 
-            pop_actor = ray.util.get_actor("pop_act")
             ray.get(pop_actor.reset_agent_pairs.remote())
 
         def on_postprocess_trajectory(self, worker, episode, agent_id, policy_id, policies, postprocessed_batch, original_batches, **kwargs):

@@ -61,7 +61,7 @@ class PopulationMARL:
 
 
 @ray.remote(num_cpus=0.25, num_gpus=0)
-class PopulationActor:
+class CombinationPopulationActor:
     def __init__(self, population_size):
         self.population_size = population_size
         self.all_pairs = list(itertools.product(range(population_size), range(population_size)))
@@ -85,6 +85,52 @@ class PopulationActor:
         idx_j = int(agt_j.split("_")[-1])
         self.scores[idx_i, idx_j] += score
         self.num_runs[idx_i, idx_j] += 1
+
+    def get_eval_pairs(self, policies):
+        eval_pairs = list(itertools.product(policies, policies))
+        eval_pairs = [pair for pair in eval_pairs if "ppo_0" in pair]
+        np.random.shuffle(eval_pairs)
+        return eval_pairs
+
+    def get_scores(self):
+        return self.scores / self.num_runs
+
+
+@ray.remote(num_cpus=0.25, num_gpus=0)
+class NextPopulationActor:
+    def __init__(self, population_size):
+        self.population_size = population_size
+        self.all_pairs = []
+        for i in range(population_size):
+            self.all_pairs += [(i, i+1), (i, population_size), (i+1, i), (population_size, i)]
+        self.all_pairs = list(set(self.all_pairs))
+        self.reset_agent_pairs()
+
+    def reset_agent_pairs(self):
+        self.pairs_to_train = self.all_pairs.copy()
+        self.scores = np.zeros(self.population_size)
+        self.num_runs = np.zeros(self.population_size)
+
+    def get_agent_pair(self):
+        if len(self.pairs_to_train) == 0:
+            self.pairs_to_train = self.all_pairs.copy()
+        pair_idx = np.random.choice(len(self.pairs_to_train))
+        idx_i, idx_j = self.pairs_to_train.pop(pair_idx)
+        agt_i, agt_j = f"agt_0_{idx_i}", f"agt_1_{idx_j}"
+        return agt_i, agt_j
+
+    def get_eval_pairs(self, policies):
+        eval_pairs = list(itertools.product(policies, policies))
+        eval_pairs = [pair for pair in eval_pairs if "ppo_0" in pair]
+        np.random.shuffle(eval_pairs)
+        return eval_pairs
+
+    def update_scores(self, agt_i, agt_j, score):
+        for agt in [agt_i, agt_j]:
+            idx = int(agt.split("_")[-1])
+            if idx < self.population_size:
+                self.scores[idx] += score
+                self.num_runs[idx] += 1
 
     def get_scores(self):
         return self.scores / self.num_runs

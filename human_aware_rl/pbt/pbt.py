@@ -82,7 +82,7 @@ def my_config():
     # Training Params #
     ###################
 
-    num_workers = 2 if not LOCAL_TESTING else 2
+    num_workers = 10 if not LOCAL_TESTING else 2
 
     # list of all random seeds to use for experiments, used to reproduce results
     seeds = [0]
@@ -95,7 +95,7 @@ def my_config():
 
     # How many environment timesteps will be simulated (across all environments)
     # for one set of gradient updates. Is divided equally across environments
-    train_batch_size = 12000 if not LOCAL_TESTING else 800
+    train_batch_size = 30000 if not LOCAL_TESTING else 800
 
     # size of minibatches we divide up each batch into before
     # performing gradient steps
@@ -148,7 +148,7 @@ def my_config():
     num_sgd_iter = 8 if not LOCAL_TESTING else 1
 
     # How many trainind iterations (calls to trainer.train()) to run before saving model checkpoint
-    save_freq = 50
+    save_freq = 100
 
     # How many training iterations to run between each evaluation
     evaluation_interval = 50 if not LOCAL_TESTING else 1
@@ -178,6 +178,7 @@ def my_config():
     # Population Params #
     #####################
 
+    train_type = "next"
     population_size = 3
     resample_prob = 0.33
     mutation_factor = [0.75, 1.25]
@@ -294,6 +295,7 @@ def my_config():
     }
 
     population_params = {
+        "train_type" : train_type,
         "population_size" : population_size,
         "resample_prob" : resample_prob,
         "mutation_factor" : mutation_factor,
