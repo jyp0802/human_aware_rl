@@ -134,3 +134,43 @@ class NextPopulationActor:
 
     def get_scores(self):
         return self.scores / self.num_runs
+
+
+@ray.remote(num_cpus=0.25, num_gpus=0)
+class FCPActor:
+    def __init__(self, policies):
+        self.f_policies = policies
+        self.f_policies.remove("fcp")
+        self.frozen_size = len(self.f_policies)
+        self.all_pairs = []
+        for f_pol in self.f_policies:
+            self.all_pairs += [("fcp", f_pol), (f_pol, "fcp")]
+        self.reset_agent_pairs()
+
+    def reset_agent_pairs(self):
+        self.pairs_to_train = self.all_pairs.copy()
+        self.scores = {f_pol: 0 for f_pol in self.f_policies}
+        self.num_runs = {f_pol: 0 for f_pol in self.f_policies}
+
+    def get_agent_pair(self):
+        if len(self.pairs_to_train) == 0:
+            self.pairs_to_train = self.all_pairs.copy()
+        pair_idx = np.random.choice(len(self.pairs_to_train))
+        agt_i, agt_j = self.pairs_to_train.pop(pair_idx)
+        return agt_i, agt_j
+
+    def get_eval_pairs(self):
+        eval_pairs = self.all_pairs.copy()
+        np.random.shuffle(eval_pairs)
+        return eval_pairs
+
+    def update_scores(self, agt_i, agt_j, score):
+        for agt in [agt_i, agt_j]:
+            if agt != "fcp":
+                self.scores[agt] += score
+                self.num_runs[agt] += 1
+
+    def get_scores(self):
+        for f_pol in self.scores:
+            self.scores[f_pol] /= self.num_runs[f_pol]
+        return self.scores

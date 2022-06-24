@@ -32,12 +32,12 @@ from ray.tune.registry import register_env
 from ray.rllib.models import ModelCatalog
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from human_aware_rl.ppo.ppo_rllib import RllibPPOModel, RllibLSTMPPOModel
-from human_aware_rl.rllib.pbt_rllib import OvercookedPopulationMultiAgent, save_trainer, gen_population_trainer_from_params
+from human_aware_rl.rllib.fcp_rllib import OvercookedPopulationMultiAgent, save_trainer, gen_fcp_trainer_from_params
 
 # Dummy wrapper to pass rllib type checks
 def _env_creator(env_config):
     # Re-import required here to work with serialization
-    from human_aware_rl.rllib.pbt_rllib import OvercookedPopulationMultiAgent 
+    from human_aware_rl.rllib.fcp_rllib import OvercookedPopulationMultiAgent 
     return OvercookedPopulationMultiAgent.from_config(env_config)
 
 @ex.config
@@ -47,7 +47,7 @@ def my_config():
     ################
 
     # Whether dense reward should come from potential function or not
-    use_phi = True
+    use_phi = False
 
     # whether to use recurrence in ppo model
     use_lstm = False
@@ -68,7 +68,10 @@ def my_config():
     # Training Params #
     ###################
 
-    num_workers = 9 if not LOCAL_TESTING else 2
+    restore_path = None
+    # restore_path = "/home/junyong/ray_results/fcp_2229_2022-05-10_12-52-46urdv6n_o/checkpoint_10000/checkpoint-10000"
+
+    num_workers = 12 if not LOCAL_TESTING else 2
 
     # list of all random seeds to use for experiments, used to reproduce results
     seeds = [0]
@@ -81,7 +84,7 @@ def my_config():
 
     # How many environment timesteps will be simulated (across all environments)
     # for one set of gradient updates. Is divided equally across environments
-    train_batch_size = 27000 if not LOCAL_TESTING else 800
+    train_batch_size = 36000 if not LOCAL_TESTING else 800
 
     # size of minibatches we divide up each batch into before
     # performing gradient steps
@@ -160,21 +163,14 @@ def my_config():
     # Whether to log training progress and debugging info
     verbose = True
 
-    #####################
-    # Population Params #
-    #####################
+    ##############
+    # FCP Params #
+    ##############
 
-    train_type = "combination"
-    population_size = 3
-    resample_prob = 0.33
-    mutation_factor = [0.75, 1.25]
-    hp_to_mutate = ["lr", "lambda", "clip_param", "gamma"]
-    hp_range = {
-        "lr": [1e-4, 1e-2],
-        "lambda": [0.9, 0.999],
-        "clip_param" : [0.01, 0.1],
-        "gamma": [0.9, 0.999]
-    }
+    ckpt_home = "/home/junyong/ray_results"
+    ckpt_dir = ["sp_fcp_2228", "sp_fcp_2229"]
+    ckpt_idx = [1, 601, 8001]
+    population_size = len(ckpt_dir) * len(ckpt_idx)
 
     ######################
     # Environment Params #
@@ -280,13 +276,11 @@ def my_config():
         }
     }
 
-    population_params = {
-        "train_type" : train_type,
+    fcp_params = {
         "population_size" : population_size,
-        "resample_prob" : resample_prob,
-        "mutation_factor" : mutation_factor,
-        "hp_to_mutate" : hp_to_mutate,
-        "hp_range" : hp_range,
+        "ckpt_home" : ckpt_home,
+        "ckpt_dir" : ckpt_dir,
+        "ckpt_idx" : ckpt_idx,
     }
 
     ray_params = {
@@ -297,10 +291,11 @@ def my_config():
     }
 
     params = {
+        "restore_path" : restore_path,
         "model_params" : model_params,
         "training_params" : training_params,
         "environment_params" : environment_params,
-        "population_params" : population_params,
+        "fcp_params" : fcp_params,
         "bc_params" : {},
         "shared_policy" : shared_policy,
         "num_training_iters" : num_training_iters,
@@ -316,7 +311,11 @@ def my_config():
 
 def run(params):
     # Retrieve the tune.Trainable object that is used for the experiment
-    trainer = gen_population_trainer_from_params(params)
+    trainer = gen_fcp_trainer_from_params(params)
+
+    # Restore saved checkpoint if needed
+    if params["restore_path"]:
+        trainer.restore(params["restore_path"])
 
     # Object to store training results in
     result = {}

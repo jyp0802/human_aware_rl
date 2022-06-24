@@ -17,7 +17,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.schedules import ConstantSchedule
 from human_aware_rl.rllib.utils import softmax, get_base_ae, get_required_arguments, iterable_equal
-from human_aware_rl.rllib.pbtlib import CombinationPopulationActor, NextPopulationActor, PopulationMARL
+from human_aware_rl.rllib.helper_library import CombinationPopulationActor, NextPopulationActor, PopulationMARL
 from datetime import datetime
 import tempfile
 import gym
@@ -618,6 +618,8 @@ def load_trainer(save_path):
     
     # Override this param to lower overhead in trainer creation
     config['training_params']['num_workers'] = 0
+
+    config['results_dir'] = os.path.join(config['results_dir'], "run")
 
     # Get un-trained trainer object with proper config
     trainer = gen_population_trainer_from_params(config)
