@@ -24,6 +24,9 @@ obs_space = gym.spaces.Discrete(len(Action.ALL_ACTIONS))
 timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
+# action_complex_oniontomatosoup = open("./action_complex_oniontomatosoup.txt", "w")
+action_complex_oniontomatosoup_no_M = open("./action_complex_oniontomatosoup_no_M.txt", "w")
+
 class RlLibAgent(Agent):
     """ 
     Class for wrapping a trained RLLib Policy object into an Overcooked compatible Agent
@@ -130,11 +133,16 @@ class OvercookedMultiAgent(MultiAgentEnv):
             self.bc_schedule = bc_schedule
         self._validate_schedule(self.bc_schedule)
         self.base_env = base_env
+        self.check_deliver = False
+        self.action_list = []
+        self.n_action_list = []
+
         # since we are not passing featurize_fn in as an argument, we create it here and check its validity
         self.featurize_fn_map = {
             "ppo": lambda state: self.base_env.lossless_state_encoding_mdp(state),
             "bc": lambda state: self.base_env.featurize_state_mdp(state)
         }
+        
         self._validate_featurize_fns(self.featurize_fn_map)
         self._initial_reward_shaping_factor = reward_shaping_factor
         self.reward_shaping_factor = reward_shaping_factor
@@ -144,6 +152,8 @@ class OvercookedMultiAgent(MultiAgentEnv):
         self.action_space = gym.spaces.Discrete(len(Action.ALL_ACTIONS))
         self.anneal_bc_factor(0)
         self.reset()
+        # self.action_list = []
+        # self.n_action_list = []
     
     def _validate_featurize_fns(self, mapping):
         assert 'ppo' in mapping, "At least one ppo agent must be specified"
@@ -167,7 +177,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
             schedule.append((float('inf'), schedule[-1][1]))
 
     def _setup_observation_space(self):
-        dummy_state = self.base_env.mdp.get_standard_start_state()
+        dummy_state = self.base_env.mdp.get_standard_start_state() ## OvercookedGridworld
 
         #ppo observation
         featurize_fn_ppo = lambda state: self.base_env.lossless_state_encoding_mdp(state)
@@ -209,7 +219,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
 
         # Ensure agent names are unique
         agents[0] = agents[0] + '_0'
-        agents[1] = agents[1] + '_1'
+        agents[1] =  agents[1] + '_1'
         
         return agents
 
@@ -237,14 +247,101 @@ class OvercookedMultiAgent(MultiAgentEnv):
         assert all(self.action_space.contains(a) for a in action), "%r (%s) invalid"%(action, type(action))
         joint_action = [Action.INDEX_TO_ACTION[a] for a in action]
         # take a step in the current base environment
+        
+        ###############FOR TASK GRAPH#############1
+        prev_state = self.base_env.state
+        check_0 = "fail"
+        check_1 = "fail"
+      
+        player_0_prev_hold = ""
+        player_1_prev_hold = ""
+        action_0 = ""
+        action_1 = ""
+        front_object_0 = []
+        front_object_1 = []
+
+        for player_idx, (player, action) in enumerate(zip(prev_state.players, joint_action)):
+            
+            if action != Action.INTERACT and action != Action.ACTIVATE:
+                continue
+            
+            pos, o = player.position, player.orientation
+            i_pos = Action.move_in_direction(pos, o)
+            terrain_type = self.base_env.mdp.get_terrain_type_at_pos(i_pos)
+
+            if player_idx == 0: # player_0
+                check_0 = self.base_env.mdp.check_action_work(prev_state, player, action)
+                player_0_prev_hold = str(player.held_object)
+                action_0 = action
+                if check_0[1] != "fail" and check_0[1] == "deliver":
+                    action_0 = "deliver"
+
+                front_object_0.append(i_pos)
+                front_object_0.append(terrain_type)
+                front_object_0.append(str(prev_state.get_object_ftask(i_pos)))
+                
+            else: #player_1
+                check_1 = self.base_env.mdp.check_action_work(prev_state, player, action)
+                player_1_prev_hold = str(player.held_object)
+                action_1 = action
+                if check_1[1] != "fail" and check_1[1] == "deliver":
+                    action_1 = "deliver"
+
+                front_object_1.append(i_pos)
+                front_object_1.append(terrain_type)
+                front_object_1.append(str(prev_state.get_object_ftask(i_pos)))
+            
+        ########################################1
+
+
+
 
         if self.use_phi:
             next_state, sparse_reward, done, info = self.base_env.step(joint_action, display_phi=True)
             potential = info['phi_s_prime'] - info['phi_s']
             dense_reward = (potential, potential)
+            
         else:
             next_state, sparse_reward, done, info = self.base_env.step(joint_action, display_phi=False)
             dense_reward = info["shaped_r_by_agent"]
+        
+        ########check_deliver###########2
+        if sparse_reward > 0:
+            self.check_deliver = True
+            print(",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,")
+        #################################2
+
+
+        # for 2 is one set --> one step below (plus the action list)
+        ########## SAVE THE TRACK ##################################3  
+
+
+        if check_0 != "fail" or check_1 != "fail":
+            # print("check is true")
+            player_0 = []
+            player_1 = []
+
+            if check_0 != "fail" and check_1 != "fail": # 둘 다 변화가 있는거임
+            # __holding__ ___active(interact, activate)___ ___player가 바라보는 pos, pos에 위치하는 물체___ 3개 저장
+                player_0 = [player_0_prev_hold, action_0, front_object_0] 
+                player_1 = [player_1_prev_hold, action_1, front_object_1]
+                self.action_set.append([check_0[1], check_1[1]])
+
+            elif check_0 != "fail": # player_0만 영향을 준 경우
+                player_0 = [player_0_prev_hold, action_0, front_object_0] 
+                player_1 = []
+                self.action_set.append([check_0[1], ""])
+
+            elif check_1 != "fail": # player_1만 영향을 준 경우 
+                player_0 = [] 
+                player_1 = [player_1_prev_hold, action_1, front_object_1]
+                self.action_set.append(["", check_1[1]])
+                
+            self.action_list.append([player_0, player_1])
+        ############################################################3
+
+
+
 
         ob_p0, ob_p1 = self._get_obs(next_state)
 
@@ -266,6 +363,24 @@ class OvercookedMultiAgent(MultiAgentEnv):
         NOTE: a nicer way to do this would be to just randomize starting positions, and not
         have to deal with randomizing indices.
         """
+        
+        # print and reset 
+        ######################FOR TASKGRAPH##########################################4
+        if self.check_deliver == True:
+            print("sparse reward is bigger than 0 ------------> success delivery")
+            print(self.action_list)
+            
+            print(self.action_list, file = action_complex_oniontomatosoup_no_M)
+            print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", file = action_complex_oniontomatosoup_no_M)
+            # print(self.action_set)
+            # print("length : ", len(self.action_list))
+            
+        
+        self.action_list = []
+        self.action_set = []
+        self.check_deliver = False
+        ###########################################################################4
+        
         self.base_env.reset(regen_mdp)
         self.curr_agents = self._populate_agents()
         ob_p0, ob_p1 = self._get_obs(self.base_env.state)
@@ -340,6 +455,9 @@ class OvercookedMultiAgent(MultiAgentEnv):
         base_ae = get_base_ae(mdp_params, env_params, outer_shape, mdp_params_schedule_fn)
         base_env = base_ae.env
 
+        # print("---------------------------------------")
+        # print(base_env)
+
         return cls(base_env, **multi_agent_params)
 
 
@@ -379,6 +497,22 @@ class TrainingCallbacks(DefaultCallbacks):
 
 
         # Store metrics where they will be visible to rllib for tensorboard logging
+
+        # print("tot: ",tot_sparse_reward)
+        # print("episode_end")
+        # if(tot_sparse_reward > 0):
+        #     print("reward: ",tot_sparse_reward, file = action_contents)
+        #     sig_action = action_contents_r.readline()
+        #     print("reward: ",tot_sparse_reward, file = action_significant)
+        #     print("sig_action: ",sig_action, file = action_significant)
+        #     print("reward: ",tot_sparse_reward, file = action_reward)
+
+        # print("reward: ",tot_sparse_reward, file = action_contents)
+        # sig_action = action_contents_r.readline()
+        # print("reward: ",tot_sparse_reward, file = action_significant)
+
+            
+
         episode.custom_metrics["sparse_reward"] = tot_sparse_reward
         episode.custom_metrics["shaped_reward"] = tot_shaped_reward
 
